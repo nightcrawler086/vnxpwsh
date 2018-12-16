@@ -7,10 +7,14 @@
     or configurations.  The web session will be set into a global
     variable for subsequent query/set/modify cmdlets to use
 .EXAMPLE
-   PS > .\Connect-Vnx -Name <SYSTEM_NAME> -Credential $creds
+   PS C:\Users\bhall\git\vnxpwsh> .\Connect-Vnx.ps1 -Name 192.168.1.105
+    Accepting control station certificate without validating...
+
+    Name   Platform Serial         FileOE       Slot
+    ----   -------- ------         ------       ----
+    system VG2      BB000C294C5E4C 8.1.8-37119  0
 #>
-function Connect-Vnx
-{
+function Connect-Vnx {
     [CmdletBinding()]
     Param
     (
@@ -29,21 +33,34 @@ function Connect-Vnx
          [System.Management.Automation.PSCredential]$Credential
     )
     BEGIN {
+        If ($Name -match "[0-9]{3}.[0-9]{3}.[0-9]{3}.[0-9]{3}") {
+            $hostname = ([system.net.dns]::GetHostByAddress("${Name}")).Hostname
+            If ($hostname) {
+                $Name = $hostname
+            }  
+        }
+        $ping = New-Object System.Net.NetworkInformation.Ping
+        $online = $ping.send("$Name", 5000)
+        If ($online.status -ne "Success") {
+            Write-Host -ForegroundColor Red "${Name} is not online"
+            Exit
+        }
         # This disables certificate checking, so the self-signed certs dont' stop us
         Write-Host -Foreground Yellow "Accepting control station certificate without validating..."
         [system.net.servicepointmanager]::Servercertificatevalidationcallback = {$true}
         If (!$Credential) {
-            $Credential = Get-Credential -Title "${Name}" -Message "Enter credentials for ${Name}"
+            $Credential = Get-Credential -Message "Enter credentials for ${Name}"
         }
         # Below two lines are how we retrieve the plain text version
         # of username and password
         $user = $Credential.GetNetworkCredential().UserName
         $pass = $Credential.GetNetworkCredential().Password
+        # Login URL
         $loginuri = "https://${Name}/Login"
         # Credentials provided in the body
         # They will be sent via an HTTPS connection so
         # encrypted in flight
-        $body = "user=${USER}&password=${PASS}&Login=Login"
+        $body = "user=${user}&password=${pass}&Login=Login"
         # Content-Type header
         $headers = @{"Content-Type" = "x-www-form-urlencoded"}
         # URL to hit for queries
@@ -64,21 +81,38 @@ function Connect-Vnx
         # Adding all the pieces together
         $request = $xmltop + $xmlformat + $qrybegin + $qry + $qryend + $xmlfooter
     }
-    PROCESS {
+    PROCESS { 
         try {
-            $login = Invoke-WebRequest -Uri $loginuri -Method Post -Body $body -SessionVariable ws
+            $login = Invoke-WebRequest -Uri $loginuri -Method Post -Body $body -SessionVariable ws -ErrorVariable err
         }
         catch {
-            Write-Host -ForegroundColor Red "Something went wrong...check your credentials"
+            Write-Host -ForegroundColor red "$err"
+            Exit
         }
         If ($login.StatusCode -eq 200) {
-            Set-Variable -Name CurrentVnxFrame -Value $ws -Scope Global
-            $response = Invoke-RestMethod -Uri $apiuri -WebSession $CurrentVnxFrame -Headers $headers -Body $request -Method Post
-
+            $response = Invoke-RestMethod -Uri $apiuri -WebSession $ws -Headers $headers -Body $request -Method Post
+            $obj = [pscustomobject]@{
+                HostName = $Name;
+                SystemName = $response.responsepacket.response.CelerraSystem.type;
+                Platform = $response.responsepacket.response.CelerraSystem.productName;
+                Serial = $response.responsepacket.response.CelerraSystem.serial;
+                FileOE = $response.responsepacket.response.CelerraSystem.version;
+                Slot = $response.responsepacket.response.CelerraSystem.celerra;
+                Session = $ws
+            }
+            Set-Variable -Name CurrentVnxFrame -Value $obj -Scope Global
+        }
+        Else {
+            Write-Host -ForegroundColor Yellow "Expected a 200 Status code, but received $login.statuscode"
+            Write-Host -ForegroundColor Yellow "RESPONSE END"
+            Write-Host -ForegroundColor Yellow "---------------------------------------------------"
+            $login.rawcontent
+            Write-Host -ForegroundColor Yellow "---------------------------------------------------"
+            Write-Host -ForegroundColor Yellow "RESPONSE END"
         }
     }
     END {
-        
+        $CurrentVnxFrame | Select-Object SystemName,Platform,Serial,FileOE,Slot | Format-Table
     }
 }
 Connect-Vnx
