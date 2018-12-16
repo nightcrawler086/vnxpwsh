@@ -5,9 +5,9 @@
    This cmdlet returns all existing filesystems on the VNX.  If querying
    for a specific filesytem, use Get-VnxFilesystem
 .EXAMPLE
-   PS > Get-VnxFilesystems
+   PS > Get-VnxFilesystem
 #>
-function Get-VnxFileSystems
+function Get-VnxFileSystem
 {
     [CmdletBinding()]
     Param
@@ -16,54 +16,54 @@ function Get-VnxFileSystems
          ValueFromPipelineByPropertyName=$true,
          Position=1)]
          [ValidateNotNullOrEmpty()]
-         $Fil,
+         $Name,
 
         [Parameter(Mandatory=$false,
          ValueFromPipelineByPropertyName=$true,
          Position=1)]
          [ValidateNotNullOrEmpty()]
-         $FileSystem,
+         $Id
 
     )
     BEGIN {
         # Expecting a Global variable to be set called
         # CurrentVnxSystem which contains the existing
         # session.
-        If (!$CurrentVnxSystem) {
-            Write-Host -ForegroundColor Red "Not current connected to a VNX System."
+        If (!$CurrentVnxFrame) {
+            Write-Host -ForegroundColor Red "Not currently connected to a VNX System."
             Write-Host -ForegroundColor Red "Run Connect-VnxSystem first."
             Exit 1
         }
         # This is the query URL
-        $APIURI = "https://${VNX}/servlets/CelerraManagementServices"
+        $apiuri = "https://$($CurrentVnxFrame.HostName)/servlets/CelerraManagementServices"
+        #write-host $apiuri
         # Setting header
-        $HEADER = @{"Content-Type" = "x-www-form-urlencoded"}
+        $header = @{"Content-Type" = "x-www-form-urlencoded"}
         # Standard "top" of XML Sheet
-        $XMLTOP = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        $xmltop = '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         # Standard format of XML Sheet
-        $XMLFORMAT = '<RequestPacket xmlns="http://www.emc.com/schemas/celerra/xml_api" >'
+        $xmlformat = '<RequestPacket xmlns="http://www.emc.com/schemas/celerra/xml_api" >'
         # Standard Footer for XML Sheet
-        $XMLFOOTER = '</RequestPacket>'
+        $xmlfooter = '</RequestPacket>'
         # Query for CIFS Shares for entire frame
-        $QRYBEGIN = '<Request><Query>'
-        $QRY = "<FileSystemQueryParams> <AspectSelection fileSystems=""true"" fileSystemCapacityInfos=""true"" /> <Alias name=""$FileSystem"" /> </FileSystemQueryParams>"
-        $QRYEND= '</Query></Request>'
+        $qryopen = '<Request><Query>'
+        $qrybegin = "<FileSystemQueryParams> <AspectSelection fileSystems=""true"" fileSystemCapacityInfos=""true"" />"  
+        $filter = '<Alias name=""${Name}"" />'
+        $qryend =  "</FileSystemQueryParams>"
+        $qryclose = '</Query></Request>'
         # Adding all the pieces together
-        $BODY = $XMLTOP + $XMLFORMAT + $QRYBEGIN + $QRY + $QRYEND + $XMLFOOTER
-        #$BODY = [xml]$BODY
-
-    }
-    PROCESS {
-            $RESPONSE = Invoke-WebRequest -Uri $APIURL -WebSession $CurrentVnxSystem -Headers  $HEADER -Body $BODY -Method Post
-            $fs = [xml]$RESPONSE.Content
-            $OUTPUT = $fs.ResponsePacket.Response.Filesystem
-    }
-    END {
-        If (!$OUTPUT) {
-            $RESPONSE.Content
+        If (!$Name) {
+            $request = $xmltop + $xmlformat + $qryopen + $qrybegin + $qryend + $qryclose + $xmlfooter   
         }
         Else {
-            $OUTPUT
+            $request = $xmltop + $xmlformat + $qryopen + $qrybegin + $filter + $qryend + $qryclose + $xmlfooter
         }
     }
+    PROCESS {
+        $response = Invoke-RestMethod -Uri $apiuri -WebSession $CurrentVnxFrame.Session -Headers $header -Body $request -Method Post
+    }
+    END {
+        $response.responsepacket.response.Filesystem
+    }
 }
+Get-VnxFileSystem
