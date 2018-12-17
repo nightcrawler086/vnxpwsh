@@ -17,13 +17,38 @@ function Get-VnxFileSystem
          Position=1)]
          [ValidateNotNullOrEmpty()]
          $Name,
+        
+         [Parameter(Mandatory=$false,
+         ValueFromPipelineByPropertyName=$true,
+         Position=2)]
+         [ValidateNotNullOrEmpty()]
+         $Mover,
 
-        [Parameter(Mandatory=$false,
+         [Parameter(Mandatory=$false,
          ValueFromPipelineByPropertyName=$true,
          Position=1)]
          [ValidateNotNullOrEmpty()]
-         $Id
+         $Vdm,
+        # Switch Parameters for aspect selections
+        [Parameter(Mandatory=$false,
+         ValueFromPipelineByPropertyName=$false,
+         Position=2)]
+         [switch]$FsCapabilities,
 
+         [Parameter(Mandatory=$false,
+         ValueFromPipelineByPropertyName=$false,
+         Position=2)]
+         [switch]$FsCheckpointInfo,
+         
+         [Parameter(Mandatory=$false,
+         ValueFromPipelineByPropertyName=$false,
+         Position=2)]
+         [switch]$FsDhsmInfo,
+
+         [Parameter(Mandatory=$false,
+         ValueFromPipelineByPropertyName=$false,
+         Position=2)]
+         [switch]$FsRdeInfo
     )
     BEGIN {
         # Expecting a Global variable to be set called
@@ -47,16 +72,30 @@ function Get-VnxFileSystem
         $xmlfooter = '</RequestPacket>'
         # Query for CIFS Shares for entire frame
         $qryopen = '<Request><Query>'
-        $qrybegin = "<FileSystemQueryParams> <AspectSelection fileSystems=""true"" fileSystemCapacityInfos=""true"" />"  
-        $filter = '<Alias name=""${Name}"" />'
+        $qrybegin = "<FileSystemQueryParams>"
+        $aspects = "<AspectSelection fileSystems=""true"" fileSystemCapacityInfos=""true"" />"  
+        
         $qryend =  "</FileSystemQueryParams>"
         $qryclose = '</Query></Request>'
         # Adding all the pieces together
         If (!$Name) {
-            $request = $xmltop + $xmlformat + $qryopen + $qrybegin + $qryend + $qryclose + $xmlfooter   
+            <#
+            [xml]$request = New-Object System.Xml.XmlDocument
+            $dec = $request.CreateXmlDeclaration("1.0", "UTF-8", "yes")
+            $request.AppendChild($dec)
+            $request.AppendChild($xmlformat)
+            $request.AppendChild($qryopen)
+            $request.AppendChild($qrybegin)
+            $request.AppendChild($qryend)
+            $request.AppendChild($qryclose)
+            $request.AppendChild($xmlfooter)
+            write-host $request
+            #>
+            $request = $xmltop + $xmlformat + $qryopen + $qrybegin + $aspects + $qryend + $qryclose + $xmlfooter   
         }
         Else {
-            $request = $xmltop + $xmlformat + $qryopen + $qrybegin + $filter + $qryend + $qryclose + $xmlfooter
+            $filter = '<Alias name=""${Name}"" />'
+            $request = $xmltop + $xmlformat + $qryopen + $qrybegin + $aspects + $filter + $qryend + $qryclose + $xmlfooter
         }
     }
     PROCESS {
