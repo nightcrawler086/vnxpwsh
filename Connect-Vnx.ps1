@@ -33,16 +33,25 @@ function Connect-Vnx {
          [System.Management.Automation.PSCredential]$Credential
     )
     BEGIN {
-        If ($Name -match "[0-9]{3}.[0-9]{3}.[0-9]{3}.[0-9]{3}") {
+        # This is to check if an IP has been given
+        # We need to store the hostname in the global variable after the connection
+        # if we can't resolve the IP, we'll leave the IP as the hostname for
+        # subsequent operations.
+        If ($Name -match "\b((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3} (25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\b") {
             $hostname = ([system.net.dns]::GetHostByAddress("${Name}")).Hostname
             If ($hostname) {
                 $Name = $hostname
             }  
         }
+        ElseIf ($Name -match "[0-9]{3}.[0-9]{3}.[0-9]{3}.[0-9]{3}") {
+            # Looks like someone is passing an invalid IP
+            Write-Host -ForegroundColor Yellow "$Name is not a valid IP address"
+            Exit
+        }
         $ping = New-Object System.Net.NetworkInformation.Ping
         $online = $ping.send("$Name", 5000)
         If ($online.status -ne "Success") {
-            Write-Host -ForegroundColor Red "${Name} is not online"
+            Write-Host -ForegroundColor Red "Ping test failed with the following status:  $($online.status)"
             Exit
         }
         # This disables certificate checking, so the self-signed certs dont' stop us
@@ -103,7 +112,7 @@ function Connect-Vnx {
             Set-Variable -Name CurrentVnxFrame -Value $obj -Scope Global
         }
         Else {
-            Write-Host -ForegroundColor Yellow "Expected a 200 Status code, but received $login.statuscode"
+            Write-Host -ForegroundColor Yellow "Expected a 200 Status code, but received $($login.statuscode)"
             Write-Host -ForegroundColor Yellow "RESPONSE END"
             Write-Host -ForegroundColor Yellow "---------------------------------------------------"
             $login.rawcontent
