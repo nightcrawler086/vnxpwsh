@@ -2,41 +2,54 @@
 .SYNOPSIS
    This cmdlet queries filesystems on the VNX
 .DESCRIPTION
-   This cmdlet returns 
+   This cmdlet returns filesystem objects and associated properties.  By default,
+   this command will reutrn filesystem and capacity info.  Additional properties
+   can be queried with added switches.
 .EXAMPLE
-   PS > Get-VnxFilesystem
+    Get all filesystems on the VNX
+   
+    PS > Get-VnxFilesystem 
+.EXAMPLE
+    Get filesystem with the name "fs01"
+
+    PS > Get-VnxFilesystem -Name "fs01"
+.EXAMPLE
+    Get filesystems on server_2.
+    server_2 = 1
+    sever_3 = 2
+
+    PS > Get-VnxFilesystem -Mover 1
+.EXAMPLE
+    Get filesystems on VDM with ID of 1
+
+    PS > Get-VnxFilesystem -Vdm 1
+.EXAMPLE
+    Get filesystems with additional properties.
+    The FsCapabilities and FsCheckpointInfo switches can be applied to queries
+    using the filters (Name, Mover, Vdm).
+
+    PS > Get-VnxFileSystem -Name fs01 -FsCapabilities -FsCheckpointInfo
 #>
 #function Get-VnxFileSystem {
     [CmdletBinding()]
     Param
     (
         # Get the filesystem by name
-        [Parameter(Mandatory=$true,
+        [Parameter(Mandatory=$false,
          ValueFromPipelineByPropertyName=$true,
-         ParameterSetName = "ByName",
          Position=1)]
         [ValidateNotNullOrEmpty()]
          [string]$Name,
-        # Get the filesystem by ID
-        # Apparently this doesn't work either
-        #[Parameter(Mandatory=$true,
-        # ValueFromPipelineByPropertyName=$true,
-        # ParameterSetName = "ById",
-        # Position=2)]
-        #[ValidateNotNullOrEmpty()]
-        # [int]$Id,
-        # Get filesystems by physical data mover
-        [Parameter(Mandatory=$true,
+        # Get the filesystems by physical data mover
+        [Parameter(Mandatory=$false,
          ValueFromPipelineByPropertyName=$true,
-         ParameterSetName = "ByMover",
-         Position=3)]
+         Position=2)]
         [ValidateNotNullOrEmpty()]
          [int]$Mover,
         # Get filesystems by virtual data mover
-        [Parameter(Mandatory=$true,
+        [Parameter(Mandatory=$false,
           ValueFromPipelineByPropertyName=$true,
-          ParameterSetName = "ByVdm",
-          Position=4)]
+          Position=3)]
         [ValidateNotNullOrEmpty()]
          [int]$Vdm,
         # Get fsCapabilities properties
@@ -119,14 +132,48 @@
             $body = $xmldec + $reqopen + $qryopen + $qrybegin + $aspects + $qryend + $qryclose + $reqclose
             #Write-host $body
         }
+        # Defining our output array
+        $out = [System.Collections.ArrayList]@()
     
     }
     PROCESS {
+        # Now we've build our request sheet, let's send it to the system.
         $response = Invoke-RestMethod -Uri $apiuri -WebSession $CurrentVnxFrame.Session -Headers $header -Body $body -Method Post
-        #Need to 
+        #Need to add some code here to combine the properties into a single output object.
+        If ($($response.responsepacket.response.querystatus.maxSeverity) -eq "ok") {
+            # Our query was successful, let's build our object
+            Foreach ($fs in $($response.responsepacket.response.fileSystem)) {
+                # Creating custom object joined by filesystem id
+                $obj = [PSObject]@{
+                    Name = $($fs.name);
+                    Type = $($fs.type);
+                    RwMover = $($fs.RwFilesystemHosts.mover);
+                    IsVdm = $($fs.RwFilesystemHosts.moverIdIsVdm);
+                    Volume = $($fs.id);
+                    StoragePoolId = $($fs.storagePools);
+                    Sliced = $($fs.containsSlices);
+                    InternalUse = $($fs.internaleUse);
+                    Id = $($fs.filesystem);
+                    Worm = $($fs.ProductionFileSystemData.cwormState)
+                }
+                # Getting capacity info for associated filesystem
+                $capacity = $response.responsepacket.response.filesystemcapacityinfo | Where-Object {$_.fileSystem -eq $($fs.fileSystem)}
+                $obj.Add('SizeMb', "$($capacity.volumeSize)")
+                $obj.Add('UsableMb', "$($capacity.resourceusage.spaceTotal)")
+                $obj.Add('UsedMb', "$($capacity.resourceusage.spaceUsed)")
+                $obj.Add('TotalFiles', "$($capacity.resourceusage.filesTotal)")
+                $obj.Add('FilesUsed', "$($capacity.resourceusage.filesUsed)")
+                $out.Add($obj) | Out-Null
+            }
+        }
     }
     END {
-        $response
+        #If (!$out) {
+            $response
+        #}
+        #Else {
+        #    $out
+        #}
     }
 #}
 #Get-VnxFileSystem
