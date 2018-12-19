@@ -4,7 +4,7 @@
 .DESCRIPTION
     This function will disconnect from the VNX defined in the global
     $CurrentVnxFrame variable.  It will use the authentication session
-    and Name 
+    and Name stored in that variable
 .EXAMPLE
    PS > .\Disconnect-Vnx
 #>
@@ -32,10 +32,10 @@ function Disconnect-Vnx {
         # Standard Footer for XML Sheet
         $xmlfooter = '</RequestPacket>'
         # Adding all the pieces together
-        $BODY = $xmltop + $xmlformat + $qrybegin + $qryend + $xmlfooter
+        $body = $xmltop + $xmlformat + $qrybegin + $qryend + $xmlfooter
     }
     PROCESS {
-        $RESPONSE = Invoke-Webrequest -Uri $apiuri -WebSession $CurrentVnxFrame.Session -Headers $headers -Body $BODY -Method Post
+        $response = Invoke-Webrequest -Uri $apiuri -WebSession $CurrentVnxFrame.Session -Headers $headers -Body $body -Method Post
         $out = [pscustomobject]@{
             HostName = $CurrentVnxFrame.Hostname
             SystemName = $CurrentVnxFrame.SystemName;
@@ -46,6 +46,11 @@ function Disconnect-Vnx {
         }
         If ($out.StatusCode -eq 200) {
             Remove-Variable -Name CurrentVnxFrame -Scope Global
+        }
+        Else {
+            Write-Host -ForegroundColor Yellow "Unexpected exit code.  Expected status code 200, but received:"
+            Write-Host -ForegroundColor Yellow "$($response.StatusCode): $($response.Status)"
+            Exit
         }
     }
     END {
