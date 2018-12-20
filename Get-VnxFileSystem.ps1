@@ -159,6 +159,7 @@
                 # Getting capacity info for associated filesystem
                 $capacity = $response.responsepacket.response.filesystemcapacityinfo | Where-Object {$_.fileSystem -eq $($fs.fileSystem)}
                 $obj.Add('SizeMb', "$($capacity.volumeSize)")
+                # ResourceUsage propery seems to only return when getting a single filesystem
                 $obj.Add('UsableMb', "$($capacity.resourceusage.spaceTotal)")
                 $obj.Add('UsedMb', "$($capacity.resourceusage.spaceUsed)")
                 $obj.Add('TotalFiles', "$($capacity.resourceusage.filesTotal)")
